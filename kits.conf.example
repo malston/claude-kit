@@ -1,0 +1,8 @@
+# Copy to ~/.claude/kits/kits.conf (or $CLAUDE_KITS_DIR/kits.conf) and edit.
+# One kit per line: <kit> <config dir> [extra claude args...]
+# A kit whose config dir is ~/.claude uses Claude Code's default config dir.
+
+# kit   config dir       extra claude args
+main    ~/.claude
+work    ~/.claude-work
+auto    ~/.claude-auto   --permission-mode acceptEdits

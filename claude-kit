@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# ABOUTME: Starts Claude Code with a named config profile (a "kit"), and links each
+# ABOUTME: kit's versioned files from a kits folder into its config dir.
+
+set -euo pipefail
+
+CLAUDE_KITS_DIR="${CLAUDE_KITS_DIR:-$HOME/.claude/kits}"
+CLAUDE_KIT_PROJECTS_DIR="${CLAUDE_KIT_PROJECTS_DIR:-}"
+CLAUDE_BIN="${CLAUDE_BIN:-claude}"
+
+# Kits from kits.conf, by index: name, absolute config dir, extra claude args.
+KIT_NAMES=()
+KIT_DIRS=()
+KIT_ARGS=()
+
+usage() {
+    cat <<EOF
+usage: claude-kit <kit> [claude args...]
+       claude-kit link [<kit>...]
+
+Starts Claude Code with the kit's config dir as CLAUDE_CONFIG_DIR, so each
+kit has its own settings, plugins, commands and CLAUDE.md.
+
+Kits:
+  Defined in \$CLAUDE_KITS_DIR/kits.conf, one per line:
+    <kit> <config dir> [extra claude args...]
+  for example:
+    main  ~/.claude
+    work  ~/.claude-work
+    auto  ~/.claude-auto  --permission-mode acceptEdits
+  Blank lines and # comments are ignored. The config dir starts with / or
+  ~/. A kit whose config dir is ~/.claude runs with Claude Code's default
+  config dir. Extra args are split on whitespace, with no quoting, and go
+  before the args you pass.
+$(kit_list)
+
+Per-project folders:
+  If CLAUDE_KIT_PROJECTS_DIR is set and \$CLAUDE_KIT_PROJECTS_DIR/<repo>/<kit>/
+  exists for the current checkout, claude-kit adds it with --add-dir and sets
+  CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 so its CLAUDE.md loads.
+  <repo> is the directory name of the main checkout, also from worktrees.
+
+Linking kit files:
+  claude-kit link [<kit>...] links each file under \$CLAUDE_KITS_DIR/<kit>/
+  into the kit's config dir. Files under \$CLAUDE_KITS_DIR/shared/ are linked
+  into every kit, unless the kit has its own file at that path. .DS_Store
+  files are skipped. With no kits it links every kit except one using
+  ~/.claude, which link does not manage. It refuses, changing nothing, if a
+  link path already holds something else or one of its parents is not a
+  directory. Safe to re-run.
+
+Environment:
+  CLAUDE_KITS_DIR          default: ~/.claude/kits
+  CLAUDE_KIT_PROJECTS_DIR  default: unset (no per-project folders)
+  CLAUDE_BIN               default: claude
+EOF
+}
+
+die() {
+    echo "claude-kit: $*" >&2
+    exit 2
+}
+
+# Prints the configured kits for the help text, or where kits.conf was expected.
+kit_list() {
+    local names
+    if names="$(load_kits 2>/dev/null && echo "${KIT_NAMES[*]}")"; then
+        echo "  Configured in $CLAUDE_KITS_DIR/kits.conf: $names"
+    else
+        echo "  No valid kits.conf found in $CLAUDE_KITS_DIR."
+    fi
+}
+
+load_kits() {
+    local conf="$CLAUDE_KITS_DIR/kits.conf" line lineno=0 name dir args i
+    [[ -f "$conf" ]] || die "no kits defined: $conf not found"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        lineno=$((lineno + 1))
+        line="${line%%#*}"
+        name="" dir="" args=""
+        read -r name dir args <<<"$line" || true
+        [[ -n "$name" ]] || continue
+        [[ -n "$dir" ]] ||
+            die "kits.conf line $lineno: expected '<kit> <config dir> [extra claude args...]'"
+        [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] ||
+            die "kits.conf line $lineno: kit name '$name' may only use letters, digits, - and _"
+        [[ "$name" != link ]] ||
+            die "kits.conf line $lineno: 'link' is a claude-kit command and can't be a kit name"
+        for ((i = 0; i < ${#KIT_NAMES[@]}; i++)); do
+            [[ "${KIT_NAMES[i]}" != "$name" ]] ||
+                die "kits.conf line $lineno: kit '$name' is already defined"
+        done
+        case "$dir" in
+            \~) dir="$HOME" ;;
+            \~/*) dir="$HOME/${dir#\~/}" ;;
+            /*) ;;
+            *) die "kits.conf line $lineno: config dir '$dir' must start with / or ~/" ;;
+        esac
+        KIT_NAMES+=("$name")
+        KIT_DIRS+=("${dir%/}")
+        KIT_ARGS+=("$args")
+    done <"$conf"
+}
+
+# Prints a kit's index in the KIT_ arrays, or fails naming the known kits.
+kit_index() {
+    local i
+    for ((i = 0; i < ${#KIT_NAMES[@]}; i++)); do
+        if [[ "${KIT_NAMES[i]}" == "$1" ]]; then
+            echo "$i"
+            return 0
+        fi
+    done
+    die "unknown kit '$1' (known: ${KIT_NAMES[*]})"
+}
+
+uses_default_dir() {
+    [[ "$1" == "$HOME/.claude" ]]
+}
+
+# Prints a path with the home dir shown as ~.
+show_path() {
+    if [[ "$1" == "$HOME/"* ]]; then
+        echo \~/"${1#"$HOME/"}"
+    else
+        echo "$1"
+    fi
+}
+
+# Prints the directory name of the main checkout, or nothing outside a repo.
+repo_name() {
+    local common
+    common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 0
+    basename "$(dirname "$common")"
+}
+
+# Fails, changing nothing, if path holds anything but a link to target, or if a
+# folder between stop (exclusive) and path is not a real directory.
+check_link() {
+    local path="$1" target="$2" stop="$3" parent
+    if [[ -e "$path" || -L "$path" ]] && [[ "$(readlink "$path")" != "$target" ]]; then
+        die "$(show_path "$path") already exists and is not claude-kit's link"
+    fi
+    parent="$(dirname "$path")"
+    while [[ "$parent" != "$stop" && "$parent" != / ]]; do
+        if [[ -L "$parent" ]] || [[ -e "$parent" && ! -d "$parent" ]]; then
+            die "$(show_path "$parent") is not a directory"
+        fi
+        parent="$(dirname "$parent")"
+    done
+}
+
+# Links path to target, creating its folders, unless the link is already there.
+make_link() {
+    mkdir -p "$(dirname "$1")"
+    [[ -L "$1" ]] || ln -s "$2" "$1"
+}
+
+# Prints "<link path>\0<target>\0" for each link a kit's config dir needs: its
+# own files, and the shared files it doesn't override. Skips .DS_Store.
+kit_links() {
+    local dir="$2" own="$CLAUDE_KITS_DIR/$1" shared="$CLAUDE_KITS_DIR/shared" file rel
+    if [[ -d "$shared" ]]; then
+        while IFS= read -r -d '' file; do
+            rel="${file#"$shared/"}"
+            [[ -e "$own/$rel" ]] || printf '%s\0%s\0' "$dir/$rel" "$file"
+        done < <(find "$shared" -type f ! -name .DS_Store -print0)
+    fi
+    if [[ -d "$own" ]]; then
+        while IFS= read -r -d '' file; do
+            printf '%s\0%s\0' "$dir/${file#"$own/"}" "$file"
+        done < <(find "$own" -type f ! -name .DS_Store -print0)
+    fi
+}
+
+link_kits() {
+    load_kits
+    local -a kits=()
+    local kit i
+    if [[ $# -eq 0 ]]; then
+        for ((i = 0; i < ${#KIT_NAMES[@]}; i++)); do
+            uses_default_dir "${KIT_DIRS[i]}" || kits+=("${KIT_NAMES[i]}")
+        done
+    else
+        kits=("$@")
+    fi
+    for kit in ${kits[@]+"${kits[@]}"}; do
+        i="$(kit_index "$kit")"
+        if uses_default_dir "${KIT_DIRS[i]}"; then
+            die "$kit uses ~/.claude, Claude Code's default config dir; link does not manage it"
+        fi
+    done
+
+    # Triples of: kit, link path, target.
+    local -a links=()
+    local dir path target
+    for kit in ${kits[@]+"${kits[@]}"}; do
+        dir="${KIT_DIRS[$(kit_index "$kit")]}"
+        while IFS= read -r -d '' path && IFS= read -r -d '' target; do
+            check_link "$path" "$target" "$(dirname "$dir")"
+            links+=("$kit" "$path" "$target")
+        done < <(kit_links "$kit" "$dir")
+    done
+
+    for ((i = 0; i < ${#links[@]}; i += 3)); do
+        make_link "${links[i + 1]}" "${links[i + 2]}"
+    done
+    for kit in ${kits[@]+"${kits[@]}"}; do
+        dir="${KIT_DIRS[$(kit_index "$kit")]}"
+        echo "linked $kit into $(show_path "$dir")"
+        for ((i = 0; i < ${#links[@]}; i += 3)); do
+            if [[ "${links[i]}" == "$kit" ]]; then
+                echo "  linked ${links[i + 1]#"$dir/"}"
+            fi
+        done
+    done
+}
+
+launch() {
+    load_kits
+    local kit="$1" i
+    shift
+    i="$(kit_index "$kit")"
+
+    local -a args=()
+    if uses_default_dir "${KIT_DIRS[i]}"; then
+        unset CLAUDE_CONFIG_DIR
+    else
+        export CLAUDE_CONFIG_DIR="${KIT_DIRS[i]}"
+    fi
+    if [[ -n "${KIT_ARGS[i]}" ]]; then
+        read -r -a args <<<"${KIT_ARGS[i]}"
+    fi
+
+    local repo project_dir
+    repo="$(repo_name)"
+    project_dir="$CLAUDE_KIT_PROJECTS_DIR/$repo/$kit"
+    if [[ -n "$CLAUDE_KIT_PROJECTS_DIR" && -n "$repo" && -d "$project_dir" ]]; then
+        export CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1
+        args+=(--add-dir "$project_dir")
+    fi
+
+    exec "$CLAUDE_BIN" ${args[@]+"${args[@]}"} "$@"
+}
+
+main() {
+    if [[ $# -eq 0 ]]; then
+        usage >&2
+        exit 2
+    fi
+    case "$1" in
+        -h | --help) usage; exit 0 ;;
+        link) shift; link_kits "$@"; exit 0 ;;
+    esac
+    launch "$@"
+}
+
+main "$@"
