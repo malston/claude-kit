@@ -339,3 +339,33 @@ make_kit_files() {
     "$KIT" link work
     [ ! -e "$HOME/.claude-work/kits.conf" ] && [ ! -L "$HOME/.claude-work/kits.conf" ]
 }
+
+# --- kits ---
+
+@test "kits prints each kit's name, config dir and extra args, tab-separated" {
+    run "$KIT" kits
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "main"$'\t'"$HOME/.claude"$'\t' ]
+    [ "${lines[1]}" = "work"$'\t'"$HOME/.claude-work"$'\t' ]
+    [ "${lines[2]}" = "auto"$'\t'"$HOME/.claude-auto"$'\t'"--permission-mode acceptEdits" ]
+    [ "${#lines[@]}" -eq 3 ]
+}
+
+@test "kits fails like launching does when kits.conf is broken" {
+    echo "broken" >>"$CLAUDE_KITS_DIR/kits.conf"
+    run "$KIT" kits
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"kits.conf line 6:"* ]]
+}
+
+@test "kits.conf rejects a kit named kits" {
+    echo "kits ~/.claude-kits" >>"$CLAUDE_KITS_DIR/kits.conf"
+    run "$KIT" work
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"kits.conf line 6: 'kits' is a claude-kit command and can't be a kit name"* ]]
+}
+
+@test "help describes kits" {
+    run "$KIT" --help
+    [[ "$output" == *"claude-kit kits"* ]]
+}
