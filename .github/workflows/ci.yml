@@ -9,15 +9,20 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Shellcheck
-        run: shellcheck claude-kit
+        run: shellcheck claude-kit tests/claude-kit.bats
 
   test:
     strategy:
@@ -25,8 +30,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install bats (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y bats
@@ -34,4 +40,13 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install bats-core
       - name: Test
+        if: runner.os == 'Linux'
         run: bats tests/claude-kit.bats
+      # /bin first on PATH makes `env bash` find macOS's stock bash 3.2.
+      - name: Test with stock bash 3.2 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          export PATH="/bin:/usr/bin:$PATH"
+          bash --version | head -1
+          bash -c '[ "${BASH_VERSINFO[0]}" -eq 3 ]'
+          bats tests/claude-kit.bats
