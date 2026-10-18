@@ -93,10 +93,11 @@ alias cwork='~/code/claude-kit/claude-kit work'
 1. Create the kits folder. If you don't have `~/.claude/kits` yet, start from the example folder in this repo:
 
    ```
+   mkdir -p ~/.claude
    cp -R ~/code/claude-kit/examples/kits ~/.claude/kits
    ```
 
-   It defines three kits (`main`, `work`, `auto`) and shows the layout `link` expects: `kits.conf`, a folder per kit with its `CLAUDE.md` and `settings.json`, and `shared/` for files every kit gets. Edit `kits.conf` and the kit folders to suit you. Don't copy it over an existing kits folder: `cp -R` would mix the two.
+   It defines three kits in `kits.conf`: `main`, which uses `~/.claude` and has no folder; `work`, with a `CLAUDE.md` and `settings.json`; and `auto`, with a `CLAUDE.md`. A command in `shared/` goes to every kit. The layout is the one shown under "Versioning what you wrote" above. Edit it to suit you. If `~/.claude/kits` already exists, `cp -R` copies the example inside it, as `~/.claude/kits/kits`, so copy only the files you want instead.
 
 2. Start a kit. Claude Code creates the config dir on first run, and you set it up like any fresh install: sign in, install plugins, write a `CLAUDE.md`.
 
