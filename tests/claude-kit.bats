@@ -522,3 +522,67 @@ cw --resume'
     [ "$status" -eq 2 ]
     [[ "$output" == *"kits.conf line 6: expected 'alias <name> <kit>'"* ]]
 }
+
+# --- shared memory ---
+
+@test "with CLAUDE_KIT_MEMORY_DIR set, a kit's auto memory goes to the project's shared folder" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/memory"
+    cd "$REPO"
+    run "$KIT" work --resume
+    [ "$status" -eq 0 ]
+    [[ "$output" == *$'ARG=--settings\nARG={"autoMemoryDirectory":"'"$WORK/memory/acme-app/memory"$'"}\nARG=--resume'* ]]
+    [ -d "$WORK/memory/acme-app/memory" ]
+}
+
+@test "every kit gets the same shared memory folder for a project" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/memory"
+    cd "$REPO"
+    run "$KIT" main
+    [[ "$output" == *'"autoMemoryDirectory":"'"$WORK/memory/acme-app/memory"'"'* ]]
+    run "$KIT" auto
+    [[ "$output" == *'"autoMemoryDirectory":"'"$WORK/memory/acme-app/memory"'"'* ]]
+}
+
+@test "a linked worktree shares its checkout's memory folder" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/memory"
+    git -C "$REPO" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
+    git -C "$REPO" worktree add -q --detach "$WORK/acme-wt"
+    cd "$WORK/acme-wt"
+    run "$KIT" work
+    [[ "$output" == *'"autoMemoryDirectory":"'"$WORK/memory/acme-app/memory"'"'* ]]
+}
+
+@test "without CLAUDE_KIT_MEMORY_DIR there is no --settings" {
+    cd "$REPO"
+    run "$KIT" work
+    [[ "$output" != *"--settings"* ]]
+}
+
+@test "outside a git repo there is no shared memory" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/memory"
+    mkdir -p "$WORK/not-a-repo"
+    cd "$WORK/not-a-repo"
+    run "$KIT" work
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"--settings"* ]]
+    [ ! -e "$WORK/memory" ]
+}
+
+@test "the memory folder path is escaped for JSON" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/my \"quoted\" memory"
+    cd "$REPO"
+    run "$KIT" work
+    [[ "$output" == *'"autoMemoryDirectory":"'"$WORK"'/my \"quoted\" memory/acme-app/memory"'* ]]
+}
+
+@test "help describes CLAUDE_KIT_MEMORY_DIR" {
+    run "$KIT" --help
+    [[ "$output" == *"CLAUDE_KIT_MEMORY_DIR"* ]]
+}
+
+@test "a backslash in the memory folder path is escaped for JSON" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/back\\slash"
+    cd "$REPO"
+    run "$KIT" work
+    [[ "$output" == *'"autoMemoryDirectory":"'"$WORK"'/back\\slash/acme-app/memory"'* ]]
+}

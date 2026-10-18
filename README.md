@@ -67,6 +67,19 @@ The next `claude-kit work` started anywhere inside `acme-app` picks it up.
 - **Nothing reaches the project's git:** the folder sits outside the checkout, so its files can't be committed to the project by accident.
 - **Claude can use it in the session:** `--add-dir` gives Claude access to the folder, so it can keep notes or reports there as well as read your instructions.
 
+### Shared memory across kits
+
+Claude Code keeps auto memory inside the config dir, per project, so each kit builds its own memories of the same project. Set `CLAUDE_KIT_MEMORY_DIR` to share them: a kit started inside a checkout of `<repo>` then keeps its auto memory in `$CLAUDE_KIT_MEMORY_DIR/<repo>/memory/`, and every kit reads and writes the same one.
+
+```
+export CLAUDE_KIT_MEMORY_DIR=~/kit-memory     # in your shell profile
+```
+
+- **How it works:** claude-kit creates the folder and starts Claude Code with `--settings '{"autoMemoryDirectory": "..."}'`. [`autoMemoryDirectory`](https://code.claude.com/docs/en/memory#storage-location) is Claude Code's own setting for where auto memory lives. Settings given on the command line take precedence over the kit's `settings.json`.
+- **Which `<repo>`:** the same name as for per-project folders, so worktrees of a checkout share its memory. Two different repos in folders with the same name would share one too.
+- **Only through claude-kit:** a plain `claude` started outside claude-kit keeps its config dir's own memory.
+- **Existing memories** stay where they were. To keep them, copy each kit's `<config dir>/projects/<project>/memory/` files into the shared folder and merge their `MEMORY.md` indexes.
+
 ## Install
 
 claude-kit is one bash script. It needs bash 3.2 or later (the version macOS ships works) and git.
@@ -216,6 +229,7 @@ claude-kit stops with the line number when a line breaks one of these rules.
 |---|---|---|
 | `CLAUDE_KITS_DIR` | `~/.claude/kits` | Folder holding `kits.conf`, `shared/` and one folder per kit. |
 | `CLAUDE_KIT_PROJECTS_DIR` | unset | Folder holding `<repo>/<kit>/` per-project folders. Unset means no per-project folders. |
+| `CLAUDE_KIT_MEMORY_DIR` | unset | Folder holding `<repo>/memory/` auto memory shared by every kit. Unset means each kit keeps its own. |
 | `CLAUDE_BIN` | `claude` | The Claude Code binary to run. |
 
 ## Limitations
