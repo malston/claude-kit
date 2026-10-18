@@ -61,7 +61,13 @@ claude-kit is one bash script. It needs bash 3.2 or later (the version macOS shi
 git clone https://github.com/malston/claude-kit.git ~/code/claude-kit
 ```
 
-Put `~/code/claude-kit` on your `PATH`, or add aliases to your shell profile:
+Put `~/code/claude-kit` on your `PATH`. In zsh, set it in `~/.zshenv`, which every zsh reads, so scripts and `zsh -c` find claude-kit too, not just interactive shells:
+
+```
+export PATH="$HOME/code/claude-kit:$PATH"
+```
+
+Or add aliases to your shell profile:
 
 ```
 alias c='~/code/claude-kit/claude-kit main'
@@ -94,6 +100,56 @@ alias cwork='~/code/claude-kit/claude-kit work'
    ```
 
    Then put `~/.claude/kits` under git, either as its own repo or as part of an existing dotfiles repo.
+
+## Setting up kits
+
+### Share instructions across kits
+
+Rules you want in every kit don't need copying into each kit's `CLAUDE.md`. Keep them in one file and import it from each kit's `CLAUDE.md` with `@`:
+
+```
+# work kit
+@~/.claude/kits/shared-rules.md
+
+Rules only this kit needs go here.
+```
+
+Imports take relative or absolute paths, `~` included. Relative paths resolve from the file that holds the import, and imported files can import others, up to four levels deep. See [How Claude remembers your project](https://code.claude.com/docs/en/memory#import-additional-files).
+
+### Keep a kit to its own plugins and instructions
+
+A kit only helps if a session sees just that kit's tools. In the kit's `settings.json`:
+
+- **`enabledPlugins`** lists the plugins that kit turns on. Install a plugin only into the kits that need it.
+- **`syncClaudeAiPlugins: false`** and **`syncClaudeAiSkills: false`** stop the kit from loading, and downloading, the plugins and skills enabled on your claude.ai account. Without them, every kit gets those too.
+- **`claudeMdExcludes`** skips `CLAUDE.md` files by absolute path or glob. Claude Code loads `CLAUDE.md` and `CLAUDE.local.md` from the working directory and every directory above it, so instructions in a folder above your projects reach every kit. Exclude the ones a kit shouldn't see.
+
+```json
+{
+  "enabledPlugins": { "some-plugin@some-marketplace": true },
+  "syncClaudeAiPlugins": false,
+  "syncClaudeAiSkills": false,
+  "claudeMdExcludes": ["/home/me/code/CLAUDE.md"]
+}
+```
+
+See the [settings reference](https://code.claude.com/docs/en/settings-reference) for each key.
+
+### Install a plugin into a kit
+
+Run `claude plugin` commands with the kit's config dir, so the plugin lands in that kit only:
+
+```
+CLAUDE_CONFIG_DIR=~/.claude-work claude plugin install some-plugin@some-marketplace
+```
+
+Inside a session, `/plugin` does the same for the kit you started.
+
+### Change a kit
+
+- **Edit the file in the kits folder,** not in the config dir. Through the link, the kit sees the change in its next session.
+- **To share a file across kits,** put it under `shared/` at the path it should have in each config dir, and run `claude-kit link`.
+- **To add a kit,** add its line to `kits.conf`, create its folder with a `CLAUDE.md` and `settings.json`, and run `claude-kit link <kit>`.
 
 ## Reference
 
