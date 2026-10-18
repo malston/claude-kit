@@ -45,7 +45,7 @@ claude-kit keeps your files in a kits folder, which you can put under git, and l
 └── auto/local/notify.js         →   ~/.claude-auto/local/notify.js
 ```
 
-`claude-kit link` creates those links. On a new machine, clone your kits folder, run `claude-kit link`, and every kit is back as it was.
+`examples/kits/` in this repo has this layout, without the hook script. `claude-kit link` creates those links. On a new machine, clone your kits folder, run `claude-kit link`, and every kit is back as it was.
 
 Claude Code writes through a linked `settings.json` (for example on `claude plugin enable`): the link stays and the change lands in your versioned file. Claude Code rewrites the whole file with its keys sorted, so expect a one-time reordering diff after the first write.
 
@@ -90,14 +90,13 @@ alias cwork='~/code/claude-kit/claude-kit work'
 
 ## Quick start
 
-1. Create the kits folder and define your kits:
+1. Create the kits folder. If you don't have `~/.claude/kits` yet, start from the example folder in this repo:
 
    ```
-   mkdir -p ~/.claude/kits
-   cp ~/code/claude-kit/kits.conf.example ~/.claude/kits/kits.conf
+   cp -R ~/code/claude-kit/examples/kits ~/.claude/kits
    ```
 
-   Edit `kits.conf` to list the kits you want.
+   It defines three kits (`main`, `work`, `auto`) and shows the layout `link` expects: `kits.conf`, a folder per kit with its `CLAUDE.md` and `settings.json`, and `shared/` for files every kit gets. Edit `kits.conf` and the kit folders to suit you. Don't copy it over an existing kits folder: `cp -R` would mix the two.
 
 2. Start a kit. Claude Code creates the config dir on first run, and you set it up like any fresh install: sign in, install plugins, write a `CLAUDE.md`.
 

@@ -369,3 +369,24 @@ make_kit_files() {
     run "$KIT" --help
     [[ "$output" == *"claude-kit kits"* ]]
 }
+
+# --- examples/kits ---
+
+@test "the example kits folder defines main, work and auto" {
+    export CLAUDE_KITS_DIR="$BATS_TEST_DIRNAME/../examples/kits"
+    run "$KIT" kits
+    [ "$status" -eq 0 ]
+    [ "$(cut -f1 <<<"$output" | tr '\n' ' ')" = "main work auto " ]
+}
+
+@test "the example kits folder links cleanly into each kit's config dir" {
+    export CLAUDE_KITS_DIR="$BATS_TEST_DIRNAME/../examples/kits"
+    run "$KIT" link
+    [ "$status" -eq 0 ]
+    [ "$(readlink "$HOME/.claude-work/CLAUDE.md")" = "$CLAUDE_KITS_DIR/work/CLAUDE.md" ]
+    [ "$(readlink "$HOME/.claude-work/settings.json")" = "$CLAUDE_KITS_DIR/work/settings.json" ]
+    [ "$(readlink "$HOME/.claude-auto/CLAUDE.md")" = "$CLAUDE_KITS_DIR/auto/CLAUDE.md" ]
+    [ "$(readlink "$HOME/.claude-work/commands/handoff.md")" = "$CLAUDE_KITS_DIR/shared/commands/handoff.md" ]
+    [ "$(readlink "$HOME/.claude-auto/commands/handoff.md")" = "$CLAUDE_KITS_DIR/shared/commands/handoff.md" ]
+    [ ! -e "$HOME/.claude" ]
+}
