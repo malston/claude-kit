@@ -346,12 +346,12 @@ make_kit_files() {
 
 # --- kits ---
 
-@test "kits prints each kit's name, config dir and extra args, tab-separated" {
+@test "kits prints each kit's name, config dir, extra args and aliases, tab-separated" {
     run "$KIT" kits
     [ "$status" -eq 0 ]
-    [ "${lines[0]}" = "main"$'\t'"$HOME/.claude"$'\t' ]
-    [ "${lines[1]}" = "work"$'\t'"$HOME/.claude-work"$'\t' ]
-    [ "${lines[2]}" = "auto"$'\t'"$HOME/.claude-auto"$'\t'"--permission-mode acceptEdits" ]
+    [ "${lines[0]}" = "main"$'\t'"$HOME/.claude"$'\t\t' ]
+    [ "${lines[1]}" = "work"$'\t'"$HOME/.claude-work"$'\t\t' ]
+    [ "${lines[2]}" = "auto"$'\t'"$HOME/.claude-auto"$'\t'"--permission-mode acceptEdits"$'\t' ]
     [ "${#lines[@]}" -eq 3 ]
 }
 
@@ -404,4 +404,121 @@ example_kits() { echo "$BATS_TEST_DIRNAME/../examples/kits"; }
     for file in "$(example_kits)"/*/settings.json; do
         python3 -I -c 'import json, sys; json.load(open(sys.argv[1]))' "$file"
     done
+}
+
+# --- aliases ---
+
+add_aliases() {
+    printf '%s\n' "alias cw work" "alias c main" "alias ww work" >>"$CLAUDE_KITS_DIR/kits.conf"
+}
+
+@test "kits lists each kit's aliases as a fourth field" {
+    add_aliases
+    run "$KIT" kits
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "main"$'\t'"$HOME/.claude"$'\t\t'"c" ]
+    [ "${lines[1]}" = "work"$'\t'"$HOME/.claude-work"$'\t\t'"cw,ww" ]
+    [ "${lines[2]}" = "auto"$'\t'"$HOME/.claude-auto"$'\t'"--permission-mode acceptEdits"$'\t' ]
+}
+
+@test "an alias line may come before its kit's line" {
+    printf '%s\n' "alias early late" "late ~/.claude-late" >>"$CLAUDE_KITS_DIR/kits.conf"
+    run "$KIT" kits
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"late"$'\t'"$HOME/.claude-late"$'\t\t'"early"* ]]
+}
+
+@test "aliases prints alias definitions that run claude-kit with each kit" {
+    add_aliases
+    local self
+    self="$(cd "$(dirname "$KIT")" && pwd)/claude-kit"
+    run "$KIT" aliases
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "alias cw='$self work'" ]
+    [ "${lines[1]}" = "alias c='$self main'" ]
+    [ "${lines[2]}" = "alias ww='$self work'" ]
+}
+
+@test "the printed aliases launch their kit when evaluated" {
+    add_aliases
+    cd "$REPO"
+    run bash -c "shopt -s expand_aliases
+eval \"\$('$KIT' aliases)\"
+cw --resume"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"CLAUDE_CONFIG_DIR=$HOME/.claude-work"* ]]
+    [[ "$output" == *"ARG=--resume"* ]]
+}
+
+@test "aliases prints nothing when kits.conf defines none" {
+    run "$KIT" aliases
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "kits.conf rejects an alias for a kit it doesn't define" {
+    echo "alias cx nope" >>"$CLAUDE_KITS_DIR/kits.conf"
+    run "$KIT" work
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"kits.conf line 6: alias 'cx' names kit 'nope', which isn't defined"* ]]
+}
+
+@test "kits.conf rejects a malformed alias line" {
+    echo "alias cw" >>"$CLAUDE_KITS_DIR/kits.conf"
+    run "$KIT" work
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"kits.conf line 6: expected 'alias <name> <kit>'"* ]]
+}
+
+@test "kits.conf rejects an alias defined twice" {
+    printf '%s\n' "alias cw work" "alias cw auto" >>"$CLAUDE_KITS_DIR/kits.conf"
+    run "$KIT" work
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"kits.conf line 7: alias 'cw' is already defined"* ]]
+}
+
+@test "kits.conf rejects an alias name with odd characters" {
+    echo "alias c/w work" >>"$CLAUDE_KITS_DIR/kits.conf"
+    run "$KIT" work
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"kits.conf line 6: alias name 'c/w' may only use letters, digits, - and _"* ]]
+}
+
+@test "kits.conf rejects a kit named aliases" {
+    echo "aliases ~/.claude-aliases" >>"$CLAUDE_KITS_DIR/kits.conf"
+    run "$KIT" work
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"kits.conf line 6: 'aliases' is a claude-kit command and can't be a kit name"* ]]
+}
+
+@test "help describes aliases" {
+    run "$KIT" --help
+    [[ "$output" == *"claude-kit aliases"* ]]
+    [[ "$output" == *"alias <name> <kit>"* ]]
+}
+
+@test "the printed aliases work when claude-kit's path has a space and an apostrophe" {
+    add_aliases
+    mkdir -p "$WORK/it's here"
+    cp "$KIT" "$WORK/it's here/claude-kit"
+    cd "$REPO"
+    CK="$WORK/it's here/claude-kit" run bash -c 'shopt -s expand_aliases
+eval "$("$CK" aliases)"
+cw --resume'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"CLAUDE_CONFIG_DIR=$HOME/.claude-work"* ]]
+}
+
+@test "kits.conf rejects an alias name that starts with -" {
+    echo "alias -x work" >>"$CLAUDE_KITS_DIR/kits.conf"
+    run "$KIT" work
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"kits.conf line 6: alias name '-x' must start with a letter, digit or _"* ]]
+}
+
+@test "kits.conf rejects an alias line with more than a name and a kit" {
+    echo "alias cw work extra" >>"$CLAUDE_KITS_DIR/kits.conf"
+    run "$KIT" work
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"kits.conf line 6: expected 'alias <name> <kit>'"* ]]
 }
