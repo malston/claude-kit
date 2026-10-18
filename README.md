@@ -69,16 +69,16 @@ The next `claude-kit work` started anywhere inside `acme-app` picks it up.
 
 ### Shared memory across kits
 
-Claude Code keeps auto memory inside the config dir, per project, so each kit builds its own memories of the same project. Set `CLAUDE_KIT_MEMORY_DIR` to share them: a kit started inside a checkout of `<repo>` then keeps its auto memory in `$CLAUDE_KIT_MEMORY_DIR/<repo>/memory/`, and every kit reads and writes the same one.
+Claude Code keeps auto memory inside the config dir, per project, so each kit builds its own memories of the same project. Set `CLAUDE_KIT_MEMORY_DIR`, starting with `/` or `~/`, to share them: a kit started inside a checkout of `<repo>` then keeps its auto memory in `$CLAUDE_KIT_MEMORY_DIR/<repo>/memory/`, and every kit reads and writes the same one.
 
 ```
 export CLAUDE_KIT_MEMORY_DIR=~/kit-memory     # in your shell profile
 ```
 
-- **How it works:** claude-kit creates the folder and starts Claude Code with `--settings '{"autoMemoryDirectory": "..."}'`. [`autoMemoryDirectory`](https://code.claude.com/docs/en/memory#storage-location) is Claude Code's own setting for where auto memory lives. Settings given on the command line take precedence over the kit's `settings.json`.
+- **How it works:** claude-kit creates the folder and starts Claude Code with `--settings '{"autoMemoryDirectory": "..."}'`. [`autoMemoryDirectory`](https://code.claude.com/docs/en/memory#storage-location) is Claude Code's own setting for where auto memory lives. Settings given on the command line take precedence over the kit's `settings.json`. If the kit's extra args or yours already include `--settings`, claude-kit adds none and prints a warning, so that session keeps the kit's own memory.
 - **Which `<repo>`:** the same name as for per-project folders, so worktrees of a checkout share its memory. Two different repos in folders with the same name would share one too.
 - **Only through claude-kit:** a plain `claude` started outside claude-kit keeps its config dir's own memory.
-- **Existing memories** stay where they were. To keep them, copy each kit's `<config dir>/projects/<project>/memory/` files into the shared folder and merge their `MEMORY.md` indexes.
+- **Existing memories** stay where they are. To keep them, copy each kit's `<config dir>/projects/<project>/memory/` files into the shared folder and merge their `MEMORY.md` indexes.
 
 ## Install
 
