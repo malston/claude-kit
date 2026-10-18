@@ -2,6 +2,10 @@
 # ABOUTME: Tests for claude-kit, which starts Claude Code with a named config profile.
 # ABOUTME: A stand-in claude binary records the args and env it receives.
 
+# Bats runs each test in its own subshell, so env changes inside a test are
+# meant to stay local to it.
+# shellcheck disable=SC2030,SC2031
+
 setup() {
     KIT="$BATS_TEST_DIRNAME/../claude-kit"
     WORK="$(mktemp -d)"
@@ -375,14 +379,16 @@ make_kit_files() {
 example_kits() { echo "$BATS_TEST_DIRNAME/../examples/kits"; }
 
 @test "the example kits folder defines main, work and auto" {
-    export CLAUDE_KITS_DIR="$(example_kits)"
+    CLAUDE_KITS_DIR="$(example_kits)"
+    export CLAUDE_KITS_DIR
     run "$KIT" kits
     [ "$status" -eq 0 ]
     [ "$(cut -f1 <<<"$output" | tr '\n' ' ')" = "main work auto " ]
 }
 
 @test "link sets up the example's work and auto kits and leaves main's ~/.claude alone" {
-    export CLAUDE_KITS_DIR="$(example_kits)"
+    CLAUDE_KITS_DIR="$(example_kits)"
+    export CLAUDE_KITS_DIR
     run "$KIT" link
     [ "$status" -eq 0 ]
     [ -L "$HOME/.claude-work/settings.json" ]
