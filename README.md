@@ -103,6 +103,7 @@ alias cwork='~/code/claude-kit/claude-kit work'
 |---|---|
 | `claude-kit <kit> [args...]` | Starts Claude Code with the kit's config dir and extra args, then your args. |
 | `claude-kit link [<kit>...]` | Links each kit's files into its config dir. With no kits, links every kit except one using `~/.claude`. |
+| `claude-kit kits` | Prints one line per kit: name, config dir (with `~` expanded) and extra args, separated by tabs. For scripts that need your kit list without parsing `kits.conf`. |
 | `claude-kit --help` | Shows usage and the kits defined in your `kits.conf`. |
 
 ### kits.conf
@@ -116,7 +117,7 @@ work    ~/.claude-work
 auto    ~/.claude-auto   --permission-mode acceptEdits
 ```
 
-- **Kit names** use letters, digits, `-` and `_`. `link` is reserved. Each name may appear once.
+- **Kit names** use letters, digits, `-` and `_`. `link` and `kits` are reserved. Each name may appear once.
 - **The config dir** starts with `/` or `~/`. A kit whose config dir is `~/.claude` uses Claude Code's default config dir.
 - **Extra args** are optional. They are split on whitespace, with no quoting, and go before the args you pass.
 - **Blank lines and `#` comments** are ignored.

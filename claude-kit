@@ -17,6 +17,7 @@ usage() {
     cat <<EOF
 usage: claude-kit <kit> [claude args...]
        claude-kit link [<kit>...]
+       claude-kit kits
 
 Starts Claude Code with the kit's config dir as CLAUDE_CONFIG_DIR, so each
 kit has its own settings, plugins, commands and CLAUDE.md.
@@ -48,6 +49,11 @@ Linking kit files:
   ~/.claude, which link does not manage. It refuses, changing nothing, if a
   link path already holds something else or one of its parents is not a
   directory. Safe to re-run.
+
+Listing kits:
+  claude-kit kits prints one line per kit: its name, its config dir with ~
+  expanded, and its extra args, separated by tabs. Scripts can read it
+  instead of parsing kits.conf themselves.
 
 Environment:
   CLAUDE_KITS_DIR          default: ~/.claude/kits
@@ -84,8 +90,8 @@ load_kits() {
             die "kits.conf line $lineno: expected '<kit> <config dir> [extra claude args...]'"
         [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] ||
             die "kits.conf line $lineno: kit name '$name' may only use letters, digits, - and _"
-        [[ "$name" != link ]] ||
-            die "kits.conf line $lineno: 'link' is a claude-kit command and can't be a kit name"
+        [[ "$name" != link && "$name" != kits ]] ||
+            die "kits.conf line $lineno: '$name' is a claude-kit command and can't be a kit name"
         for ((i = 0; i < ${#KIT_NAMES[@]}; i++)); do
             [[ "${KIT_NAMES[i]}" != "$name" ]] ||
                 die "kits.conf line $lineno: kit '$name' is already defined"
@@ -216,6 +222,14 @@ link_kits() {
     done
 }
 
+list_kits() {
+    load_kits
+    local i
+    for ((i = 0; i < ${#KIT_NAMES[@]}; i++)); do
+        printf '%s\t%s\t%s\n' "${KIT_NAMES[i]}" "${KIT_DIRS[i]}" "${KIT_ARGS[i]}"
+    done
+}
+
 launch() {
     load_kits
     local kit="$1" i
@@ -251,6 +265,7 @@ main() {
     case "$1" in
         -h | --help) usage; exit 0 ;;
         link) shift; link_kits "$@"; exit 0 ;;
+        kits) list_kits; exit 0 ;;
     esac
     launch "$@"
 }
