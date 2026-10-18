@@ -193,8 +193,8 @@ alias   c       main
 alias   cwork   work
 ```
 
-- **Kit names** use letters, digits, `-` and `_`. `link`, `kits` and `aliases` are reserved. Each name may appear once.
-- **Alias lines** (`alias <name> <kit>`) give a kit a shell alias. Alias names use letters, digits, `-` and `_`, each may appear once, and the kit must be defined somewhere in the file. A kit can have several aliases.
+- **Kit names** use letters, digits, `-` and `_`. `alias`, `link`, `kits` and `aliases` are reserved. Each name may appear once.
+- **Alias lines** (`alias <name> <kit>`) give a kit a shell alias. Alias names use letters, digits, `-` and `_`, can't start with `-`, each may appear once, and the kit must be defined somewhere in the file. A kit can have several aliases.
 - **The config dir** starts with `/` or `~/`. A kit whose config dir is `~/.claude` uses Claude Code's default config dir.
 - **Extra args** are optional. They are split on whitespace, with no quoting, and go before the args you pass.
 - **Blank lines and `#` comments** are ignored.

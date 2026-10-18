@@ -40,7 +40,8 @@ Kits:
   before the args you pass.
   A line of the form
     alias <name> <kit>
-  gives a kit a shell alias; see claude-kit aliases.
+  gives a kit a shell alias; see claude-kit aliases. Kit names alias, link,
+  kits and aliases are reserved.
 $(kit_list)
 
 Per-project folders:
@@ -110,10 +111,8 @@ load_kits() {
             die "kits.conf line $lineno: kit name '$name' may only use letters, digits, - and _"
         [[ "$name" != link && "$name" != kits && "$name" != aliases ]] ||
             die "kits.conf line $lineno: '$name' is a claude-kit command and can't be a kit name"
-        for ((i = 0; i < ${#KIT_NAMES[@]}; i++)); do
-            [[ "${KIT_NAMES[i]}" != "$name" ]] ||
-                die "kits.conf line $lineno: kit '$name' is already defined"
-        done
+        ! kit_defined "$name" ||
+            die "kits.conf line $lineno: kit '$name' is already defined"
         case "$dir" in
             \~) dir="$HOME" ;;
             \~/*) dir="$HOME/${dir#\~/}" ;;
@@ -138,6 +137,8 @@ add_alias() {
         die "kits.conf line $lineno: expected 'alias <name> <kit>'"
     [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] ||
         die "kits.conf line $lineno: alias name '$name' may only use letters, digits, - and _"
+    [[ "$name" != -* ]] ||
+        die "kits.conf line $lineno: alias name '$name' must start with a letter, digit or _"
     for ((i = 0; i < ${#ALIAS_NAMES[@]}; i++)); do
         [[ "${ALIAS_NAMES[i]}" != "$name" ]] ||
             die "kits.conf line $lineno: alias '$name' is already defined"
@@ -147,12 +148,20 @@ add_alias() {
     ALIAS_LINES+=("$lineno")
 }
 
-kit_defined() {
+# Prints a kit's index in the KIT_ arrays; fails, printing nothing, if it isn't defined.
+kit_position() {
     local i
     for ((i = 0; i < ${#KIT_NAMES[@]}; i++)); do
-        [[ "${KIT_NAMES[i]}" != "$1" ]] || return 0
+        if [[ "${KIT_NAMES[i]}" == "$1" ]]; then
+            echo "$i"
+            return 0
+        fi
     done
     return 1
+}
+
+kit_defined() {
+    kit_position "$1" >/dev/null
 }
 
 # Prints a kit's aliases, comma-separated.
@@ -166,14 +175,7 @@ kit_aliases() {
 
 # Prints a kit's index in the KIT_ arrays, or fails naming the known kits.
 kit_index() {
-    local i
-    for ((i = 0; i < ${#KIT_NAMES[@]}; i++)); do
-        if [[ "${KIT_NAMES[i]}" == "$1" ]]; then
-            echo "$i"
-            return 0
-        fi
-    done
-    die "unknown kit '$1' (known: ${KIT_NAMES[*]})"
+    kit_position "$1" || die "unknown kit '$1' (known: ${KIT_NAMES[*]})"
 }
 
 uses_default_dir() {
@@ -289,12 +291,12 @@ list_kits() {
 # Prints a shell alias definition for each alias in kits.conf.
 print_aliases() {
     load_kits
-    local self i command
+    local self i command q="'\\''"
     self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
     for ((i = 0; i < ${#ALIAS_NAMES[@]}; i++)); do
         # The alias value runs as a command, so the path is quoted inside it too.
         command="$(printf '%q %q' "$self" "${ALIAS_KITS[i]}")"
-        printf "alias %s='%s'\n" "${ALIAS_NAMES[i]}" "${command//\'/\'\\\'\'}"
+        printf "alias %s='%s'\n" "${ALIAS_NAMES[i]}" "${command//\'/$q}"
     done
 }
 

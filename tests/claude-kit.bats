@@ -502,3 +502,17 @@ cw --resume'
     [ "$status" -eq 0 ]
     [[ "$output" == *"CLAUDE_CONFIG_DIR=$HOME/.claude-work"* ]]
 }
+
+@test "kits.conf rejects an alias name that starts with -" {
+    echo "alias -x work" >>"$CLAUDE_KITS_DIR/kits.conf"
+    run "$KIT" work
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"kits.conf line 6: alias name '-x' must start with a letter, digit or _"* ]]
+}
+
+@test "kits.conf rejects an alias line with more than a name and a kit" {
+    echo "alias cw work extra" >>"$CLAUDE_KITS_DIR/kits.conf"
+    run "$KIT" work
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"kits.conf line 6: expected 'alias <name> <kit>'"* ]]
+}
