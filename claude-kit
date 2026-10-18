@@ -6,6 +6,7 @@ set -euo pipefail
 
 CLAUDE_KITS_DIR="${CLAUDE_KITS_DIR:-$HOME/.claude/kits}"
 CLAUDE_KIT_PROJECTS_DIR="${CLAUDE_KIT_PROJECTS_DIR:-}"
+CLAUDE_KIT_MEMORY_DIR="${CLAUDE_KIT_MEMORY_DIR:-}"
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 
 # Kits from kits.conf, by index: name, absolute config dir, extra claude args.
@@ -50,6 +51,15 @@ Per-project folders:
   CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 so its CLAUDE.md loads.
   <repo> is the directory name of the main checkout, also from worktrees.
 
+Shared memory:
+  If CLAUDE_KIT_MEMORY_DIR is set (starting with / or ~/), a kit started
+  inside a checkout of <repo> keeps Claude Code's auto memory in
+  \$CLAUDE_KIT_MEMORY_DIR/<repo>/memory/, so every kit shares one memory per
+  project. claude-kit creates the folder and passes
+  --settings '{"autoMemoryDirectory": ...}', which takes precedence over an
+  autoMemoryDirectory in the kit's settings.json. When the kit's extra args
+  or yours already include --settings, it adds none and warns instead.
+
 Linking kit files:
   claude-kit link [<kit>...] links each file under \$CLAUDE_KITS_DIR/<kit>/
   into the kit's config dir. Files under \$CLAUDE_KITS_DIR/shared/ are linked
@@ -73,6 +83,7 @@ Shell aliases:
 Environment:
   CLAUDE_KITS_DIR          default: ~/.claude/kits
   CLAUDE_KIT_PROJECTS_DIR  default: unset (no per-project folders)
+  CLAUDE_KIT_MEMORY_DIR    default: unset (each kit keeps its own memory)
   CLAUDE_BIN               default: claude
 EOF
 }
@@ -189,6 +200,34 @@ show_path() {
     else
         echo "$1"
     fi
+}
+
+# Prints a string as a JSON string literal, escaping backslashes and double quotes.
+json_string() {
+    printf '"%s"' "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+}
+
+# Prints CLAUDE_KIT_MEMORY_DIR as an absolute path without trailing slashes, or fails
+# if it doesn't start with / or ~/ or contains a control character.
+memory_root() {
+    local dir="$CLAUDE_KIT_MEMORY_DIR"
+    [[ "$dir" != *[[:cntrl:]]* ]] || die "CLAUDE_KIT_MEMORY_DIR contains a control character"
+    case "$dir" in
+        \~/*) dir="$HOME/${dir#\~/}" ;;
+        /*) ;;
+        *) die "CLAUDE_KIT_MEMORY_DIR '$dir' must start with / or ~/" ;;
+    esac
+    while [[ "$dir" == */ && "$dir" != / ]]; do dir="${dir%/}"; done
+    echo "$dir"
+}
+
+# True if any argument is --settings or --settings=...
+has_settings_arg() {
+    local arg
+    for arg in "$@"; do
+        [[ "$arg" != --settings && "$arg" != --settings=* ]] || return 0
+    done
+    return 1
 }
 
 # Prints the directory name of the main checkout, or nothing outside a repo.
@@ -322,6 +361,17 @@ launch() {
     if [[ -n "$CLAUDE_KIT_PROJECTS_DIR" && -n "$repo" && -d "$project_dir" ]]; then
         export CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1
         args+=(--add-dir "$project_dir")
+    fi
+    if [[ -n "$CLAUDE_KIT_MEMORY_DIR" && -n "$repo" ]]; then
+        local memory_dir
+        memory_dir="$(memory_root)/$repo/memory"
+        if has_settings_arg ${args[@]+"${args[@]}"} "$@"; then
+            echo "claude-kit: --settings is already given, so shared memory is off for this session" >&2
+        else
+            mkdir -p "$memory_dir" 2>/dev/null ||
+                die "cannot create the shared memory folder $memory_dir (CLAUDE_KIT_MEMORY_DIR)"
+            args+=(--settings "{\"autoMemoryDirectory\":$(json_string "$memory_dir")}")
+        fi
     fi
 
     exec "$CLAUDE_BIN" ${args[@]+"${args[@]}"} "$@"

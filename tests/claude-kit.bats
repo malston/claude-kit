@@ -522,3 +522,135 @@ cw --resume'
     [ "$status" -eq 2 ]
     [[ "$output" == *"kits.conf line 6: expected 'alias <name> <kit>'"* ]]
 }
+
+# --- shared memory ---
+
+@test "with CLAUDE_KIT_MEMORY_DIR set, a kit's auto memory goes to the project's shared folder" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/memory"
+    cd "$REPO"
+    run "$KIT" work --resume
+    [ "$status" -eq 0 ]
+    [[ "$output" == *$'ARG=--settings\nARG={"autoMemoryDirectory":"'"$WORK/memory/acme-app/memory"$'"}\nARG=--resume'* ]]
+    [ -d "$WORK/memory/acme-app/memory" ]
+}
+
+@test "every kit gets the same shared memory folder for a project" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/memory"
+    cd "$REPO"
+    run "$KIT" main
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"autoMemoryDirectory":"'"$WORK/memory/acme-app/memory"'"'* ]]
+    run "$KIT" auto
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"autoMemoryDirectory":"'"$WORK/memory/acme-app/memory"'"'* ]]
+}
+
+@test "a linked worktree shares its checkout's memory folder" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/memory"
+    git -C "$REPO" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
+    git -C "$REPO" worktree add -q --detach "$WORK/acme-wt"
+    cd "$WORK/acme-wt"
+    run "$KIT" work
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"autoMemoryDirectory":"'"$WORK/memory/acme-app/memory"'"'* ]]
+}
+
+@test "without CLAUDE_KIT_MEMORY_DIR there is no --settings" {
+    cd "$REPO"
+    run "$KIT" work
+    [[ "$output" != *"--settings"* ]]
+}
+
+@test "outside a git repo there is no shared memory" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/memory"
+    mkdir -p "$WORK/not-a-repo"
+    cd "$WORK/not-a-repo"
+    run "$KIT" work
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"--settings"* ]]
+    [ ! -e "$WORK/memory" ]
+}
+
+@test "the memory folder path is escaped for JSON" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/my \"quoted\" memory"
+    cd "$REPO"
+    run "$KIT" work
+    [[ "$output" == *'"autoMemoryDirectory":"'"$WORK"'/my \"quoted\" memory/acme-app/memory"'* ]]
+}
+
+@test "a backslash in the memory folder path is escaped for JSON" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/back\\slash"
+    cd "$REPO"
+    run "$KIT" work
+    [[ "$output" == *'"autoMemoryDirectory":"'"$WORK"'/back\\slash/acme-app/memory"'* ]]
+}
+
+@test "CLAUDE_KIT_MEMORY_DIR may start with ~/" {
+    export CLAUDE_KIT_MEMORY_DIR=\~/kit-memory
+    cd "$REPO"
+    run "$KIT" work
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"autoMemoryDirectory":"'"$HOME/kit-memory/acme-app/memory"'"'* ]]
+    [ -d "$HOME/kit-memory/acme-app/memory" ]
+}
+
+@test "a relative CLAUDE_KIT_MEMORY_DIR is rejected, creating nothing" {
+    export CLAUDE_KIT_MEMORY_DIR="kit-memory"
+    cd "$REPO"
+    run "$KIT" work
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"CLAUDE_KIT_MEMORY_DIR 'kit-memory' must start with / or ~/"* ]]
+    [ ! -e "$REPO/kit-memory" ]
+}
+
+@test "trailing slashes on CLAUDE_KIT_MEMORY_DIR are dropped" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/memory//"
+    cd "$REPO"
+    run "$KIT" work
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"autoMemoryDirectory":"'"$WORK/memory/acme-app/memory"'"'* ]]
+}
+
+@test "a CLAUDE_KIT_MEMORY_DIR with a control character is rejected" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/tab"$'\t'"here"
+    cd "$REPO"
+    run "$KIT" work
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"CLAUDE_KIT_MEMORY_DIR contains a control character"* ]]
+}
+
+@test "a shared memory folder that can't be created fails with a claude-kit message" {
+    mkdir -p "$WORK/locked"
+    chmod 500 "$WORK/locked"
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/locked"
+    cd "$REPO"
+    run "$KIT" work
+    chmod 700 "$WORK/locked"
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"claude-kit: cannot create the shared memory folder $WORK/locked/acme-app/memory (CLAUDE_KIT_MEMORY_DIR)"* ]]
+}
+
+@test "with --settings in the caller's args, shared memory is skipped with a warning" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/memory"
+    cd "$REPO"
+    run "$KIT" work --settings /tmp/mine.json
+    [ "$status" -eq 0 ]
+    [ "$(grep -c -- '^ARG=--settings$' <<<"$output")" -eq 1 ]
+    [[ "$output" == *"ARG=/tmp/mine.json"* ]]
+    [[ "$output" == *"claude-kit: --settings is already given, so shared memory is off for this session"* ]]
+}
+
+@test "with --settings in the kit's extra args, shared memory is skipped with a warning" {
+    echo "pinned ~/.claude-pinned --settings /tmp/pinned.json" >>"$CLAUDE_KITS_DIR/kits.conf"
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/memory"
+    cd "$REPO"
+    run "$KIT" pinned
+    [ "$status" -eq 0 ]
+    [ "$(grep -c -- '^ARG=--settings$' <<<"$output")" -eq 1 ]
+    [[ "$output" == *"shared memory is off for this session"* ]]
+}
+
+@test "help describes CLAUDE_KIT_MEMORY_DIR" {
+    run "$KIT" --help
+    [[ "$output" == *"CLAUDE_KIT_MEMORY_DIR"* ]]
+}
