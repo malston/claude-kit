@@ -369,3 +369,33 @@ make_kit_files() {
     run "$KIT" --help
     [[ "$output" == *"claude-kit kits"* ]]
 }
+
+# --- examples/kits ---
+
+example_kits() { echo "$BATS_TEST_DIRNAME/../examples/kits"; }
+
+@test "the example kits folder defines main, work and auto" {
+    export CLAUDE_KITS_DIR="$(example_kits)"
+    run "$KIT" kits
+    [ "$status" -eq 0 ]
+    [ "$(cut -f1 <<<"$output" | tr '\n' ' ')" = "main work auto " ]
+}
+
+@test "link sets up the example's work and auto kits and leaves main's ~/.claude alone" {
+    export CLAUDE_KITS_DIR="$(example_kits)"
+    run "$KIT" link
+    [ "$status" -eq 0 ]
+    [ -L "$HOME/.claude-work/settings.json" ]
+    [ "$(readlink "$HOME/.claude-auto/CLAUDE.md")" = "$CLAUDE_KITS_DIR/auto/CLAUDE.md" ]
+    [ "$(readlink "$HOME/.claude-auto/commands/handoff.md")" = "$CLAUDE_KITS_DIR/shared/commands/handoff.md" ]
+    # main's config dir is ~/.claude, which link never manages.
+    [ ! -e "$HOME/.claude" ]
+}
+
+@test "the example's settings files are valid JSON" {
+    command -v python3 >/dev/null || skip "python3 is not installed"
+    local file
+    for file in "$(example_kits)"/*/settings.json; do
+        python3 -I -c 'import json, sys; json.load(open(sys.argv[1]))' "$file"
+    done
+}
