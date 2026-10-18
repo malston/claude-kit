@@ -81,12 +81,13 @@ Put `~/code/claude-kit` on your `PATH`. In zsh, set it in `~/.zshenv`, which eve
 export PATH="$HOME/code/claude-kit:$PATH"
 ```
 
-Or add aliases to your shell profile:
+For short commands, give kits aliases in `kits.conf` (see [kits.conf](#kitsconf)) and load them in your shell profile:
 
 ```
-alias c='~/code/claude-kit/claude-kit main'
-alias cwork='~/code/claude-kit/claude-kit work'
+eval "$(~/code/claude-kit/claude-kit aliases)"
 ```
+
+Each alias runs claude-kit by its full path, so it works whether or not claude-kit is on `PATH`.
 
 ## Quick start
 
@@ -173,7 +174,8 @@ Inside a session, `/plugin` does the same for the kit you started.
 |---|---|
 | `claude-kit <kit> [args...]` | Starts Claude Code with the kit's config dir and extra args, then your args. |
 | `claude-kit link [<kit>...]` | Links each kit's files into its config dir. With no kits, links every kit except one using `~/.claude`. |
-| `claude-kit kits` | Prints one line per kit: name, config dir (with `~` expanded) and extra args, separated by tabs. For scripts that need your kit list without parsing `kits.conf`. |
+| `claude-kit kits` | Prints one line per kit: name, config dir (with `~` expanded), extra args and aliases (comma-separated), separated by tabs. For scripts that need your kit list without parsing `kits.conf`, and to see which alias runs which kit. |
+| `claude-kit aliases` | Prints a shell `alias` definition for each alias in `kits.conf`. Load them with `eval "$(claude-kit aliases)"`. |
 | `claude-kit --help` | Shows usage and the kits defined in your `kits.conf`. |
 
 ### kits.conf
@@ -185,9 +187,14 @@ One kit per line:
 main    ~/.claude
 work    ~/.claude-work
 auto    ~/.claude-auto   --permission-mode acceptEdits
+
+# alias <name> <kit>
+alias   c       main
+alias   cwork   work
 ```
 
-- **Kit names** use letters, digits, `-` and `_`. `link` and `kits` are reserved. Each name may appear once.
+- **Kit names** use letters, digits, `-` and `_`. `link`, `kits` and `aliases` are reserved. Each name may appear once.
+- **Alias lines** (`alias <name> <kit>`) give a kit a shell alias. Alias names use letters, digits, `-` and `_`, each may appear once, and the kit must be defined somewhere in the file. A kit can have several aliases.
 - **The config dir** starts with `/` or `~/`. A kit whose config dir is `~/.claude` uses Claude Code's default config dir.
 - **Extra args** are optional. They are split on whitespace, with no quoting, and go before the args you pass.
 - **Blank lines and `#` comments** are ignored.
