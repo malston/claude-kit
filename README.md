@@ -51,7 +51,21 @@ Claude Code writes through a linked `settings.json` (for example on `claude plug
 
 ### Per-project folders
 
-Some instructions belong to one project and one kit, and shouldn't be committed to that project, such as personal notes or a kit-specific glossary. Set `CLAUDE_KIT_PROJECTS_DIR`, and when you start a kit inside a checkout of `<repo>`, claude-kit looks for `$CLAUDE_KIT_PROJECTS_DIR/<repo>/<kit>/`. If that folder exists, it is added with `--add-dir`, and `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1` is set so its `CLAUDE.md` loads. `<repo>` is the directory name of the main checkout, so this also works from worktrees.
+Some instructions belong to one project and one kit, and shouldn't be committed to that project, such as personal notes or a kit-specific glossary. Set `CLAUDE_KIT_PROJECTS_DIR`, and when you start a kit inside a checkout of `<repo>`, claude-kit looks for `$CLAUDE_KIT_PROJECTS_DIR/<repo>/<kit>/`. If that folder exists, it is added with `--add-dir`, and `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1` is set so its instruction files load. `<repo>` is the directory name of the main checkout, so worktrees of one checkout share a project folder, and two clones in differently named folders get separate ones.
+
+Create the folder yourself. For the `work` kit in a checkout called `acme-app`:
+
+```
+export CLAUDE_KIT_PROJECTS_DIR=~/kit-projects     # once, in your shell profile
+mkdir -p ~/kit-projects/acme-app/work
+$EDITOR ~/kit-projects/acme-app/work/CLAUDE.md
+```
+
+The next `claude-kit work` started anywhere inside `acme-app` picks it up.
+
+- **What loads from it:** with that variable set, Claude Code reads `CLAUDE.md`, `.claude/CLAUDE.md`, `.claude/rules/*.md` and `CLAUDE.local.md` from an added directory ([docs](https://code.claude.com/docs/en/memory#load-from-additional-directories)).
+- **Nothing reaches the project's git:** the folder sits outside the checkout, so its files can't be committed to the project by accident.
+- **Claude can use it in the session:** `--add-dir` gives Claude access to the folder, so it can keep notes or reports there as well as read your instructions.
 
 ## Install
 
