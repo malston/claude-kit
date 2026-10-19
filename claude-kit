@@ -49,7 +49,8 @@ Per-project folders:
   If CLAUDE_KIT_PROJECTS_DIR is set and \$CLAUDE_KIT_PROJECTS_DIR/<repo>/<kit>/
   exists for the current checkout, claude-kit adds it with --add-dir and sets
   CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 so its CLAUDE.md loads.
-  <repo> is the directory name of the main checkout, also from worktrees.
+  <repo> is the directory name of the main checkout, also from worktrees;
+  a submodule uses its own directory name.
 
 Shared memory:
   If CLAUDE_KIT_MEMORY_DIR is set (starting with / or ~/), a kit started
@@ -243,10 +244,16 @@ has_settings_arg() {
 }
 
 # Prints the directory name of the main checkout, or nothing outside a repo.
+# A submodule's git dir sits under the superproject's .git/modules/, so its
+# name comes from the working tree that git dir belongs to.
 repo_name() {
-    local common
+    local common top
     common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 0
-    basename "$(dirname "$common")"
+    if [[ "${common##*/}" != .git ]] && top="$(git --git-dir="$common" rev-parse --show-toplevel 2>/dev/null)"; then
+        basename "$top"
+    else
+        basename "$(dirname "$common")"
+    fi
 }
 
 # Fails, changing nothing, if path holds anything but a link to target, or if a

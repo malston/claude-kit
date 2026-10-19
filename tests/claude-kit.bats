@@ -563,6 +563,17 @@ cw --resume'
     [[ "$output" == *'"autoMemoryDirectory":"'"$WORK/memory/acme-app/memory"'"'* ]]
 }
 
+@test "a submodule gets a memory folder named after itself" {
+    export CLAUDE_KIT_MEMORY_DIR="$WORK/memory"
+    git init -q "$WORK/lib"
+    git -C "$WORK/lib" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
+    git -C "$REPO" -c protocol.file.allow=always submodule add -q "$WORK/lib" vendor/lib
+    cd "$REPO/vendor/lib"
+    run "$KIT" work
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"autoMemoryDirectory":"'"$WORK/memory/lib/memory"'"'* ]]
+}
+
 @test "without CLAUDE_KIT_MEMORY_DIR there is no --settings" {
     cd "$REPO"
     run "$KIT" work
