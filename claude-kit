@@ -49,7 +49,8 @@ Per-project folders:
   If CLAUDE_KIT_PROJECTS_DIR is set and \$CLAUDE_KIT_PROJECTS_DIR/<repo>/<kit>/
   exists for the current checkout, claude-kit adds it with --add-dir and sets
   CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 so its CLAUDE.md loads.
-  <repo> is the directory name of the main checkout, also from worktrees.
+  <repo> is the directory name of the main checkout, also from worktrees;
+  a submodule uses its own directory name.
 
 Shared memory:
   If CLAUDE_KIT_MEMORY_DIR is set (starting with / or ~/), a kit started
@@ -88,8 +89,12 @@ Environment:
 EOF
 }
 
-die() {
+warn() {
     echo "claude-kit: $*" >&2
+}
+
+die() {
+    warn "$@"
     exit 2
 }
 
@@ -104,7 +109,7 @@ kit_list() {
 }
 
 load_kits() {
-    local conf="$CLAUDE_KITS_DIR/kits.conf" line lineno=0 name dir args i
+    local conf="$CLAUDE_KITS_DIR/kits.conf" line lineno=0 name dir path args i
     [[ -f "$conf" ]] || die "no kits defined: $conf not found"
     while IFS= read -r line || [[ -n "$line" ]]; do
         lineno=$((lineno + 1))
@@ -124,14 +129,10 @@ load_kits() {
             die "kits.conf line $lineno: '$name' is a claude-kit command and can't be a kit name"
         ! kit_defined "$name" ||
             die "kits.conf line $lineno: kit '$name' is already defined"
-        case "$dir" in
-            \~) dir="$HOME" ;;
-            \~/*) dir="$HOME/${dir#\~/}" ;;
-            /*) ;;
-            *) die "kits.conf line $lineno: config dir '$dir' must start with / or ~/" ;;
-        esac
+        path="$(absolute_path "$dir")" ||
+            die "kits.conf line $lineno: config dir '$dir' must start with / or ~/"
         KIT_NAMES+=("$name")
-        KIT_DIRS+=("${dir%/}")
+        KIT_DIRS+=("$path")
         KIT_ARGS+=("$args")
     done <"$conf"
     for ((i = 0; i < ${#ALIAS_NAMES[@]}; i++)); do
@@ -207,34 +208,52 @@ json_string() {
     printf '"%s"' "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
 }
 
-# Prints CLAUDE_KIT_MEMORY_DIR as an absolute path without trailing slashes, or fails
-# if it doesn't start with / or ~/ or contains a control character.
-memory_root() {
-    local dir="$CLAUDE_KIT_MEMORY_DIR"
-    [[ "$dir" != *[[:cntrl:]]* ]] || die "CLAUDE_KIT_MEMORY_DIR contains a control character"
+# Prints a path given as ~, ~/... or /... as an absolute path without trailing
+# slashes (/ stays /); fails if it starts any other way.
+absolute_path() {
+    local dir="$1"
     case "$dir" in
+        \~) dir="$HOME" ;;
         \~/*) dir="$HOME/${dir#\~/}" ;;
         /*) ;;
-        *) die "CLAUDE_KIT_MEMORY_DIR '$dir' must start with / or ~/" ;;
+        *) return 1 ;;
     esac
     while [[ "$dir" == */ && "$dir" != / ]]; do dir="${dir%/}"; done
     echo "$dir"
 }
 
-# True if any argument is --settings or --settings=...
+# Prints CLAUDE_KIT_MEMORY_DIR as an absolute path without trailing slashes, or fails
+# if it doesn't start with / or ~ or contains a control character.
+memory_root() {
+    [[ "$CLAUDE_KIT_MEMORY_DIR" != *[[:cntrl:]]* ]] || die "CLAUDE_KIT_MEMORY_DIR contains a control character"
+    absolute_path "$CLAUDE_KIT_MEMORY_DIR" ||
+        die "CLAUDE_KIT_MEMORY_DIR '$CLAUDE_KIT_MEMORY_DIR' must start with / or ~/"
+}
+
+# True if --settings or --settings=... comes before any --, after which
+# arguments are prompt text.
 has_settings_arg() {
     local arg
     for arg in "$@"; do
-        [[ "$arg" != --settings && "$arg" != --settings=* ]] || return 0
+        case "$arg" in
+            --) return 1 ;;
+            --settings | --settings=*) return 0 ;;
+        esac
     done
     return 1
 }
 
 # Prints the directory name of the main checkout, or nothing outside a repo.
+# A submodule's git dir sits under the superproject's .git/modules/, so its
+# name comes from the working tree that git dir belongs to.
 repo_name() {
-    local common
+    local common top
     common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 0
-    basename "$(dirname "$common")"
+    if [[ "${common##*/}" != .git ]] && top="$(git --git-dir="$common" rev-parse --show-toplevel 2>/dev/null)"; then
+        basename "$top"
+    else
+        basename "$(dirname "$common")"
+    fi
 }
 
 # Fails, changing nothing, if path holds anything but a link to target, or if a
@@ -364,9 +383,12 @@ launch() {
     fi
     if [[ -n "$CLAUDE_KIT_MEMORY_DIR" && -n "$repo" ]]; then
         local memory_dir
-        memory_dir="$(memory_root)/$repo/memory"
-        if has_settings_arg ${args[@]+"${args[@]}"} "$@"; then
-            echo "claude-kit: --settings is already given, so shared memory is off for this session" >&2
+        memory_dir="$(memory_root)"
+        memory_dir="${memory_dir%/}/$repo/memory"
+        if [[ "$repo" == *[[:cntrl:]]* ]]; then
+            warn "the repo name contains a control character, so shared memory is off for this session"
+        elif has_settings_arg ${args[@]+"${args[@]}"} "$@"; then
+            warn "--settings is already given, so shared memory is off for this session"
         else
             mkdir -p "$memory_dir" 2>/dev/null ||
                 die "cannot create the shared memory folder $memory_dir (CLAUDE_KIT_MEMORY_DIR)"
